@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import MinMaxScaler
 from keras.layers import GRU
 
 salesData = pd.read_csv("Sales Data.csv", index_col=0, sep=",")
@@ -35,7 +36,14 @@ data['Product Code'] = label_encoder.fit_transform(data['Product'])
 
 data = pd.get_dummies(data, columns=['City'], drop_first=True)
 
-print(data)
+data_grouped = data[data['Order Date'].dt.year == 2019]
+data_grouped = data_grouped.groupby(data_grouped['Order Date'].dt.date)['Sales'].sum().reset_index()
+
+
+scaler = MinMaxScaler()
+scaled_data = scaler.fit_transform(data_grouped[['Sales']])
+
+print(data_grouped)
 
 salesByDate = salesByDate.to_frame().reset_index()
 salesSumData = salesByDate.values
