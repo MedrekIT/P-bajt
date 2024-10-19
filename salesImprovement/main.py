@@ -13,15 +13,18 @@ data = salesData.values
 for row in data:
     row[4] = datetime.strptime(row[4], '%Y-%m-%d %H:%M:%S')
 
-data = data[data[:, 4].argsort()]
+salesByDate = pd.DataFrame(data, columns=dataName)
+salesByDate = salesByDate[salesByDate['Order Date'].dt.year == 2019]
+salesByDate = salesByDate.groupby(salesByDate['Order Date'].dt.date)['Sales'].sum()
+salesByDate.plot()
+plt.show()
+test = salesByDate.to_frame()
 
+print(list(test.values))
 
-y = data[::200, 7]
-x = data[::200, 4]
-
-salesSum = [data[1:month for month in data[4], :].sum(axis=0)]
-plt.plot(x, y)
-plt.xlabel('Date')
-plt.ylabel('Sales data')
-plt.xticks(ticks=x[::60], rotation=45)
+#plt.plot(x, y)
+#plt.xlabel('Date')
+#plt.ylabel('Sales data')
+#plt.xticks(ticks=x[::60], rotation=45)
 #plt.xticks([])
+
