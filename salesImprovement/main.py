@@ -1,58 +1,89 @@
-from datetime import datetime
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
-from keras.layers import GRU
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error
+from keras.models import Sequential
+from keras.layers import GRU, Dense, Dropout
 
+# Preparing data to be sequential (compatible with GRU model)
+def createSequences(data, seqLen):
+    x = []
+    y = []
+    for i in range(len(data) - seqLen):
+        x.append(data[i:i + seqLen]) #Sequences
+        y.append(data[i + seqLen, 0])  #Results
+    return np.array(x), np.array(y)
+
+#Import data
 salesData = pd.read_csv("Sales Data.csv", index_col=0, sep=",")
-dataName = list(salesData.columns)
-data = salesData.values
+salesData['Order Date'] = pd.to_datetime(salesData['Order Date'])
 
-for row in data:
-    row[4] = datetime.strptime(row[4], '%Y-%m-%d %H:%M:%S')
-    
+#One-hot encoding for product names and merge encoded columns with the original data
+ohEncode = pd.get_dummies(salesData['Product'], prefix='Product') #Encoding
+salesDataEnc = pd.concat([salesData, ohEncode], axis=1) #Merging with dataset
 
-salesByDate = pd.DataFrame(data, columns=dataName)
-salesByDate['Order Date'] = pd.to_datetime(salesByDate['Order Date'])
-salesByDate = salesByDate[salesByDate['Order Date'].dt.year == 2019]
+#Group by date
+#Sum sales, quantities, and product columns
+#Use 'first' to keep the date
+dataGroup = salesDataEnc[salesDataEnc['Order Date'].dt.year == 2019]
+dataGroup = dataGroup.groupby(dataGroup['Order Date'].dt.date).agg({
+    'Order Date': 'first',
+    'Sales': 'sum',
+    'Quantity Ordered': 'sum',
+    **{col: 'sum' for col in ohEncode.columns}  #Sum of product columns
+}).reset_index(drop=True)
 
-salesByDate = salesByDate.groupby(salesByDate['Order Date'].dt.date)['Sales'].sum()
+#Prepare features and sales for model
+features = dataGroup[['Quantity Ordered'] + list(ohEncode.columns)].values
+sales = dataGroup['Sales'].values.reshape(-1, 1)
 
-salesByDate.plot()
+#Normalize
+scaler = MinMaxScaler()
+scaledFeat = scaler.fit_transform(features)
+scaledSal = scaler.fit_transform(sales)
+
+#Prepare sequences compatible with GRU
+sequenceLen = 3
+x, y = createSequences(np.hstack((scaledSal, scaledFeat)), sequenceLen)
+
+#Split data into training and test
+xTrain, xTest, yTrain, yTest = train_test_split(x, y, test_size=0.7, shuffle=False)
+
+#Build GRU model
+model = Sequential()
+
+#First layer
+model.add(GRU(units=100, return_sequences=True, input_shape=(xTrain.shape[1], xTrain.shape[2])))
+model.add(Dropout(0.2)) #Dropout to prevent overfitting
+
+#Second layer
+model.add(GRU(units=100))
+model.add(Dropout(0.2)) #Dropout to prevent overfitting
+
+#Dense output layer
+model.add(Dense(1))
+
+#Compile and train
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(xTrain, yTrain, epochs=30, batch_size=64)
+
+#Make predictions and inverse scale results
+yPred = model.predict(xTest)
+yPredResc = scaler.inverse_transform(yPred)
+yTestResc = scaler.inverse_transform(yTest.reshape(-1, 1))
+
+#Visualize results
+plt.figure(figsize=(12, 6))
+plt.plot(yTestResc, label='True Values', color='blue')
+plt.plot(yPredResc, label='Predictions', color='orange')
+plt.xlabel('Data Points')
+plt.ylabel('Total Sales')
+plt.legend()
+plt.title('True Sales vs. Predicted Sales')
 plt.show()
 
-data = pd.DataFrame(data, columns=dataName)
-data['Year'] = data['Order Date'].dt.year
-data['Month'] = data['Order Date'].dt.month
-data['Day'] = data['Order Date'].dt.day
-data['DayOfWeek'] = data['Order Date'].dt.dayofweek
-data['Hour'] = data['Order Date'].dt.hour
-
-label_encoder = LabelEncoder()
-data['Product Code'] = label_encoder.fit_transform(data['Product'])
-
-data = pd.get_dummies(data, columns=['City'], drop_first=True)
-
-data_grouped = data[data['Order Date'].dt.year == 2019]
-data_grouped = data_grouped.groupby(data_grouped['Order Date'].dt.date)['Sales'].sum().reset_index()
-
-
-scaler = MinMaxScaler()
-scaled_data = scaler.fit_transform(data_grouped[['Sales']])
-
-print(data_grouped)
-
-salesByDate = salesByDate.to_frame().reset_index()
-salesSumData = salesByDate.values
-salesSumCols = list(salesByDate.columns)
-
-
-#plt.plot(x, y)
-#plt.xlabel('Date')
-#plt.ylabel('Sales data')
-#plt.xticks(ticks=x[::60], rotation=45)
-#plt.xticks([])
-
+#Evaluate model
+mae = mean_absolute_error(yTest, yPred)
+print(f'MAE (Mean absolute error) = {(mae * 100):.2f}%')
