@@ -76,8 +76,9 @@ yTestResc = scaler.inverse_transform(yTest.reshape(-1, 1))
 
 #Visualize results
 plt.figure(figsize=(12, 6))
-plt.plot(yTestResc, label='True Values', color='blue')
-plt.plot(yPredResc, label='Predictions', color='orange')
+plt.plot(yTestResc, label='True Values', color='#3f407e')
+plt.plot(yPredResc, label='Predictions', color='white')
+plt.gca().set_facecolor("#040a44")
 plt.xlabel('Data Points')
 plt.ylabel('Total Sales')
 plt.legend()
